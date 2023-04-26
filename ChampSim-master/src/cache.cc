@@ -5,49 +5,33 @@
 uint64_t l2pf_access = 0;
 
 
-bool CACHE::make_inclusive(int cpu,int evict_cpu,CACHE &cache,uint64_t address,uint64_t instr_id)
-{
+bool CACHE::make_inclusive(int cpu,int evict_cpu,CACHE &cache,uint64_t address,uint64_t instr_id){
 
-	if(cache.MSHR.occupancy != 0)
-	{
-		for (uint32_t i=0; i<cache.MSHR.SIZE; i++)
-			if (cache.MSHR.entry[i].address == address)
-			{
-			//	cout<<"MSHR present no replacement: "<<cache_type<<" "<<cache.cache_type<<" "<<hex<<address<<dec<<endl;
-					return false;
-			}
+	if(cache.MSHR.occupancy != 0){
+		for (uint32_t i = 0; i < cache.MSHR.SIZE; i++){
+      if (cache.MSHR.entry[i].address == address) return false;
+    }
 	}
 
-        if(cache.cache_type == IS_L2C && cache.WQ.occupancy != 0)
-        {
-                for (uint32_t i=0; i<cache.WQ.SIZE; i++)
-                        if (cache.WQ.entry[i].address == address)
-                        {
-			//	cout<<"WQ present no replacement: "<<cache_type<<" "<<cache.cache_type<<" "<<hex<<address<<dec<<endl;
-                                        return false;
-                        }
-        }
-
+  if(cache.cache_type == IS_L2C && cache.WQ.occupancy != 0){
+    for (uint32_t i = 0; i < cache.WQ.SIZE; i++){
+      if (cache.WQ.entry[i].address == address) return false;
+    }
+  }
 
 	int set = cache.get_set(address);
-	for(unsigned int way = 0; way < cache.NUM_WAY; way++)
-		if(cache.block[set][way].valid && cache.block[set][way].tag == address)
-		{
-			if(cache.block[set][way].dirty)
-			{
-				if (cache.lower_level)
-				{
+	for(unsigned int way = 0; way < cache.NUM_WAY; way++){
+		if(cache.block[set][way].tag == address && cache.block[set][way].valid){
+			if(cache.block[set][way].dirty){
+				if (cache.lower_level){
 					if (cache.lower_level->get_occupancy(2, cache.block[set][way].address) == cache.lower_level->get_size(2, cache.block[set][way].address)) {
-
 						cache.lower_level->increment_WQ_FULL(cache.block[set][way].address);
-
 						return false;
 					}
 					else {
 						PACKET writeback_packet;
 						
 						writeback_packet.fill_level = cache.fill_level << 1;
-						//writeback_packet.fill_level = FILL_DRC; // evicted dirty block dont fill cache(write no-allocate)
 						writeback_packet.cpu = cache.cpu;
 						writeback_packet.address = cache.block[set][way].address;
 						writeback_packet.full_addr = cache.block[set][way].full_addr;
@@ -59,26 +43,13 @@ bool CACHE::make_inclusive(int cpu,int evict_cpu,CACHE &cache,uint64_t address,u
 
 						cache.lower_level->add_wq(&writeback_packet);
 						cache.block[set][way].valid = 0;
-						
-						/*
-						if(cache.block[set][way].address == QTRACE_ADDR)
-						{
-							cout<<"Dirty block added to lower level WQ: "<<(dynamic_cast<CACHE*>(cache.lower_level))->NAME<<endl;
-						}*/
-
-			
-
 						return true;
 					}
 				}
 			}
-			else
-			{
-				cache.block[set][way].valid = 0;
-	
-				//break;
-			}
+			else cache.block[set][way].valid = 0;
 		}
+  }
 	return true;
 }
 
@@ -161,49 +132,32 @@ void CACHE::handle_fill()
 
         uint8_t  do_fill = 1;
 
-// #ifdef INCLUSIVE
-
         // When eviction is done at LLC Level
-
-        if(cache_type == IS_LLC && block[set][way].valid)
-        {
-        	for(int i=0;i<NUM_CPUS;i++)
-        	{
-        		if(!make_inclusive(i,MSHR.entry[mshr_index].cpu,ooo_cpu[i].L1I,block[set][way].address,MSHR.entry[mshr_index].instr_id))
-        		{
-        			do_fill = 0;
-        			STALL[MSHR.entry[mshr_index].type]++;
+        if(cache_type == IS_LLC && block[set][way].valid){
+        	for(int i = 0; i < NUM_CPUS; i++){
+        		if(!make_inclusive(i, MSHR.entry[mshr_index].cpu, ooo_cpu[i].L1I, block[set][way].address, MSHR.entry[mshr_index].instr_id) ||
+               !make_inclusive(i, MSHR.entry[mshr_index].cpu, ooo_cpu[i].L1D, block[set][way].address, MSHR.entry[mshr_index].instr_id))
+            {
+                do_fill = 0;
+                STALL[MSHR.entry[mshr_index].type]++;
         		}
-        		if(!make_inclusive(i,MSHR.entry[mshr_index].cpu,ooo_cpu[i].L1D,block[set][way].address,MSHR.entry[mshr_index].instr_id))
-        		{
-        			do_fill = 0;
-        			STALL[MSHR.entry[mshr_index].type]++;
-        		}
-        		if(do_fill && !make_inclusive(i,MSHR.entry[mshr_index].cpu,ooo_cpu[i].L2C,block[set][way].address,MSHR.entry[mshr_index].instr_id))
-        		{
+        		if(do_fill && !make_inclusive(i, MSHR.entry[mshr_index].cpu, ooo_cpu[i].L2C, block[set][way].address, MSHR.entry[mshr_index].instr_id))
+            {
         			do_fill = 0;
         			STALL[MSHR.entry[mshr_index].type]++;
         		}
         	}
-
         }
 
         // When eviction is done at L2 Level
-
-        if(cache_type == IS_L2C && block[set][way].valid)
+        if(cache_type == IS_L2C && block[set][way].valid &&
+           (!make_inclusive(cpu, MSHR.entry[mshr_index].cpu, ooo_cpu[cpu].L1I, block[set][way].address, MSHR.entry[mshr_index].instr_id) ||
+            !make_inclusive(cpu, MSHR.entry[mshr_index].cpu, ooo_cpu[cpu].L1D, block[set][way].address, MSHR.entry[mshr_index].instr_id)))
         {
-        	if(!make_inclusive(cpu,MSHR.entry[mshr_index].cpu,ooo_cpu[cpu].L1I,block[set][way].address,MSHR.entry[mshr_index].instr_id))
-        	{
-        		do_fill = 0;
-        		STALL[MSHR.entry[mshr_index].type]++;
-        	}
-        	if(!make_inclusive(cpu,MSHR.entry[mshr_index].cpu,ooo_cpu[cpu].L1D,block[set][way].address,MSHR.entry[mshr_index].instr_id))
-		    {
-				do_fill = 0;
-				STALL[MSHR.entry[mshr_index].type]++;
-		    }
+          do_fill = 0;
+          STALL[MSHR.entry[mshr_index].type]++;
         }
-// #endif
+
 
         // is this dirty?
         if (block[set][way].dirty) {
@@ -534,51 +488,33 @@ void CACHE::handle_writeback()
 #endif
 
                 uint8_t  do_fill = 1;
-// #ifdef INCLUSIVE
 
-        // When eviction is done at LLC Level
-
-        if(cache_type == IS_LLC && block[set][way].valid)
-        {
-        	for(int i=0;i<NUM_CPUS;i++)
-        	{
-        		if(!make_inclusive(i,WQ.entry[index].cpu,ooo_cpu[i].L1I,block[set][way].address,WQ.entry[index].instr_id))
-        		{
-        			do_fill = 0;
-        			STALL[WQ.entry[index].type]++;
+        //LLC Level Eviction
+        if(cache_type == IS_LLC && block[set][way].valid){
+        	for(int i = 0; i < NUM_CPUS; i++){
+        		if(!make_inclusive(i, WQ.entry[index].cpu, ooo_cpu[i].L1I, block[set][way].address, WQ.entry[index].instr_id) ||
+               !make_inclusive(i, WQ.entry[index].cpu, ooo_cpu[i].L1D, block[set][way].address, WQ.entry[index].instr_id))
+            {
+              do_fill = 0;
+              STALL[WQ.entry[index].type]++;
         		}
-        		if(!make_inclusive(i,WQ.entry[index].cpu,ooo_cpu[i].L1D,block[set][way].address,WQ.entry[index].instr_id))
-        		{
-        			do_fill = 0;
-        			STALL[WQ.entry[index].type]++;
-        		}
-        		if(do_fill && !make_inclusive(i,WQ.entry[index].cpu,ooo_cpu[i].L2C,block[set][way].address,WQ.entry[index].instr_id))
-        		{
+        		if(do_fill && !make_inclusive(i, WQ.entry[index].cpu, ooo_cpu[i].L2C, block[set][way].address, WQ.entry[index].instr_id))
+            {
         			do_fill = 0;
         			STALL[WQ.entry[index].type]++;
         		}
         	}
-
-        	//if(do_fill == 0)
-        	//	inclusive_stall++;
         }
 
-        // When eviction is done at L2 Level
-
-        if(cache_type == IS_L2C && block[set][way].valid)
+        //L2 Level Eviction
+        if(cache_type == IS_L2C && block[set][way].valid &&
+          (!make_inclusive(cpu,WQ.entry[index].cpu,ooo_cpu[cpu].L1I,block[set][way].address,WQ.entry[index].instr_id) ||
+           !make_inclusive(cpu,WQ.entry[index].cpu,ooo_cpu[cpu].L1D,block[set][way].address,WQ.entry[index].instr_id)))
         {
-        	if(!make_inclusive(cpu,WQ.entry[index].cpu,ooo_cpu[cpu].L1I,block[set][way].address,WQ.entry[index].instr_id))
-        	{
-        		do_fill = 0;
-        		STALL[WQ.entry[index].type]++;
-        	}
-        	if(!make_inclusive(cpu,WQ.entry[index].cpu,ooo_cpu[cpu].L1D,block[set][way].address,WQ.entry[index].instr_id))
-		    {
-				do_fill = 0;
-				STALL[WQ.entry[index].type]++;
-		    }
+          do_fill = 0;
+          STALL[WQ.entry[index].type]++;
         }
-// #endif
+
                 // is this dirty?
                 if (block[set][way].dirty) {
 
