@@ -915,6 +915,9 @@ int main(int argc, char** argv)
         uncore.LLC.operate();
     }
 
+// #ifdef INCLUSIVE
+    uncore.LLC.check_inclusive();
+// #endif
     uint64_t elapsed_second = (uint64_t)(time(NULL) - start_time),
              elapsed_minute = elapsed_second / 60,
              elapsed_hour = elapsed_minute / 60;

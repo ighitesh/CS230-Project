@@ -1,7 +1,86 @@
 #include "cache.h"
 #include "set.h"
-
+#include "uncore.h"
+#include "ooo_cpu.h"
 uint64_t l2pf_access = 0;
+
+
+bool CACHE::make_inclusive(int cpu,int evict_cpu,CACHE &cache,uint64_t address,uint64_t instr_id)
+{
+
+	if(cache.MSHR.occupancy != 0)
+	{
+		for (uint32_t i=0; i<cache.MSHR.SIZE; i++)
+			if (cache.MSHR.entry[i].address == address)
+			{
+			//	cout<<"MSHR present no replacement: "<<cache_type<<" "<<cache.cache_type<<" "<<hex<<address<<dec<<endl;
+					return false;
+			}
+	}
+
+        if(cache.cache_type == IS_L2C && cache.WQ.occupancy != 0)
+        {
+                for (uint32_t i=0; i<cache.WQ.SIZE; i++)
+                        if (cache.WQ.entry[i].address == address)
+                        {
+			//	cout<<"WQ present no replacement: "<<cache_type<<" "<<cache.cache_type<<" "<<hex<<address<<dec<<endl;
+                                        return false;
+                        }
+        }
+
+
+	int set = cache.get_set(address);
+	for(unsigned int way = 0; way < cache.NUM_WAY; way++)
+		if(cache.block[set][way].valid && cache.block[set][way].tag == address)
+		{
+			if(cache.block[set][way].dirty)
+			{
+				if (cache.lower_level)
+				{
+					if (cache.lower_level->get_occupancy(2, cache.block[set][way].address) == cache.lower_level->get_size(2, cache.block[set][way].address)) {
+
+						cache.lower_level->increment_WQ_FULL(cache.block[set][way].address);
+
+						return false;
+					}
+					else {
+						PACKET writeback_packet;
+						
+						writeback_packet.fill_level = cache.fill_level << 1;
+						//writeback_packet.fill_level = FILL_DRC; // evicted dirty block dont fill cache(write no-allocate)
+						writeback_packet.cpu = cache.cpu;
+						writeback_packet.address = cache.block[set][way].address;
+						writeback_packet.full_addr = cache.block[set][way].full_addr;
+						writeback_packet.data = cache.block[set][way].data;
+						writeback_packet.instr_id = instr_id;
+						writeback_packet.ip = 0;
+						writeback_packet.type = WRITEBACK;
+						writeback_packet.event_cycle = current_core_cycle[cache.cpu];
+
+						cache.lower_level->add_wq(&writeback_packet);
+						cache.block[set][way].valid = 0;
+						
+						/*
+						if(cache.block[set][way].address == QTRACE_ADDR)
+						{
+							cout<<"Dirty block added to lower level WQ: "<<(dynamic_cast<CACHE*>(cache.lower_level))->NAME<<endl;
+						}*/
+
+			
+
+						return true;
+					}
+				}
+			}
+			else
+			{
+				cache.block[set][way].valid = 0;
+	
+				//break;
+			}
+		}
+	return true;
+}
 
 void CACHE::handle_fill()
 {
@@ -81,6 +160,50 @@ void CACHE::handle_fill()
 #endif
 
         uint8_t  do_fill = 1;
+
+// #ifdef INCLUSIVE
+
+        // When eviction is done at LLC Level
+
+        if(cache_type == IS_LLC && block[set][way].valid)
+        {
+        	for(int i=0;i<NUM_CPUS;i++)
+        	{
+        		if(!make_inclusive(i,MSHR.entry[mshr_index].cpu,ooo_cpu[i].L1I,block[set][way].address,MSHR.entry[mshr_index].instr_id))
+        		{
+        			do_fill = 0;
+        			STALL[MSHR.entry[mshr_index].type]++;
+        		}
+        		if(!make_inclusive(i,MSHR.entry[mshr_index].cpu,ooo_cpu[i].L1D,block[set][way].address,MSHR.entry[mshr_index].instr_id))
+        		{
+        			do_fill = 0;
+        			STALL[MSHR.entry[mshr_index].type]++;
+        		}
+        		if(do_fill && !make_inclusive(i,MSHR.entry[mshr_index].cpu,ooo_cpu[i].L2C,block[set][way].address,MSHR.entry[mshr_index].instr_id))
+        		{
+        			do_fill = 0;
+        			STALL[MSHR.entry[mshr_index].type]++;
+        		}
+        	}
+
+        }
+
+        // When eviction is done at L2 Level
+
+        if(cache_type == IS_L2C && block[set][way].valid)
+        {
+        	if(!make_inclusive(cpu,MSHR.entry[mshr_index].cpu,ooo_cpu[cpu].L1I,block[set][way].address,MSHR.entry[mshr_index].instr_id))
+        	{
+        		do_fill = 0;
+        		STALL[MSHR.entry[mshr_index].type]++;
+        	}
+        	if(!make_inclusive(cpu,MSHR.entry[mshr_index].cpu,ooo_cpu[cpu].L1D,block[set][way].address,MSHR.entry[mshr_index].instr_id))
+		    {
+				do_fill = 0;
+				STALL[MSHR.entry[mshr_index].type]++;
+		    }
+        }
+// #endif
 
         // is this dirty?
         if (block[set][way].dirty) {
@@ -411,7 +534,51 @@ void CACHE::handle_writeback()
 #endif
 
                 uint8_t  do_fill = 1;
+// #ifdef INCLUSIVE
 
+        // When eviction is done at LLC Level
+
+        if(cache_type == IS_LLC && block[set][way].valid)
+        {
+        	for(int i=0;i<NUM_CPUS;i++)
+        	{
+        		if(!make_inclusive(i,WQ.entry[index].cpu,ooo_cpu[i].L1I,block[set][way].address,WQ.entry[index].instr_id))
+        		{
+        			do_fill = 0;
+        			STALL[WQ.entry[index].type]++;
+        		}
+        		if(!make_inclusive(i,WQ.entry[index].cpu,ooo_cpu[i].L1D,block[set][way].address,WQ.entry[index].instr_id))
+        		{
+        			do_fill = 0;
+        			STALL[WQ.entry[index].type]++;
+        		}
+        		if(do_fill && !make_inclusive(i,WQ.entry[index].cpu,ooo_cpu[i].L2C,block[set][way].address,WQ.entry[index].instr_id))
+        		{
+        			do_fill = 0;
+        			STALL[WQ.entry[index].type]++;
+        		}
+        	}
+
+        	//if(do_fill == 0)
+        	//	inclusive_stall++;
+        }
+
+        // When eviction is done at L2 Level
+
+        if(cache_type == IS_L2C && block[set][way].valid)
+        {
+        	if(!make_inclusive(cpu,WQ.entry[index].cpu,ooo_cpu[cpu].L1I,block[set][way].address,WQ.entry[index].instr_id))
+        	{
+        		do_fill = 0;
+        		STALL[WQ.entry[index].type]++;
+        	}
+        	if(!make_inclusive(cpu,WQ.entry[index].cpu,ooo_cpu[cpu].L1D,block[set][way].address,WQ.entry[index].instr_id))
+		    {
+				do_fill = 0;
+				STALL[WQ.entry[index].type]++;
+		    }
+        }
+// #endif
                 // is this dirty?
                 if (block[set][way].dirty) {
 
@@ -1751,3 +1918,143 @@ void CACHE::increment_WQ_FULL(uint64_t address)
 {
     WQ.FULL++;
 }
+
+
+void CACHE::check_inclusive(){
+	for(int i=0; i<NUM_CPUS; i++){
+
+	int counter = 0;
+	int counter1 = 0;
+	//L1I data should be present L2C
+		for(int l1iset=0; l1iset<L1I_SET; l1iset++)
+			for(int l1iway=0; l1iway<L1I_WAY; l1iway++)
+				if(ooo_cpu[i].L1I.block[l1iset][l1iway].valid){
+					int match = -1;
+					int l2cset = ooo_cpu[i].L2C.get_set(ooo_cpu[i].L1I.block[l1iset][l1iway].address);
+
+					for(int l2cway=0;l2cway< L2C_WAY;l2cway++)
+						{
+							if(ooo_cpu[i].L2C.block[l2cset][l2cway].tag == ooo_cpu[i].L1I.block[l1iset][l1iway].tag &&
+							   ooo_cpu[i].L2C.block[l2cset][l2cway].valid ==1){
+								match = 1 ;
+							}
+						}
+				// #ifdef INCLUSIVE_PRINT
+					if(match == -1)
+					{
+						counter++;
+						cout<<"L1I address not in L2C:"<<hex<<ooo_cpu[i].L1I.block[l1iset][l1iway].address<<dec<<endl;
+					}
+				// #endif
+
+					assert(match==1);
+					match = -1;
+	//L1I data should be in LLC
+					int llcset = uncore.LLC.get_set(ooo_cpu[i].L1I.block[l1iset][l1iway].address);
+						for(int llcway=0;llcway< LLC_WAY;llcway++)
+							if(ooo_cpu[i].L1I.block[l1iset][l1iway].tag == uncore.LLC.block[llcset][llcway].tag &&
+									uncore.LLC.block[llcset][llcway].valid == 1){
+								match = 1 ;
+							}
+				// #ifdef INCLUSIVE_PRINT
+					if(match == -1)
+					{
+						counter1++;
+						cout<<"L1I address not in LLC:"<<hex<<ooo_cpu[i].L1I.block[l1iset][l1iway].address<<dec<<endl;
+					}
+				// #endif
+
+					assert(match==1);
+				}
+		if(counter)
+			cout<<"l1I data not in l2c: "<<counter<<endl;
+		if(counter1)
+			cout<<"l1I data not in llc: "<<counter1<<endl;
+		counter=0;
+		counter1=0;
+		//L1D data should be present L2C
+			for(int l1dset=0;l1dset<L1D_SET;l1dset++)
+				for(int l1dway=0;l1dway<L1D_WAY;l1dway++)
+					if(ooo_cpu[i].L1D.block[l1dset][l1dway].valid == 1){
+
+						int match = -1;
+						int l2cset = ooo_cpu[i].L2C.get_set(ooo_cpu[i].L1D.block[l1dset][l1dway].address);
+
+						for(int l2cway=0;l2cway< L2C_WAY;l2cway++){
+								if(ooo_cpu[i].L2C.block[l2cset][l2cway].tag == ooo_cpu[i].L1D.block[l1dset][l1dway].tag &&
+										ooo_cpu[i].L2C.block[l2cset][l2cway].valid ==1)
+									match = 1 ;
+								}
+				// #ifdef INCLUSIVE_PRINT
+						if(match == -1)
+						{
+							counter++;
+							if(ooo_cpu[i].L1D.block[l1dset][l1dway].dirty)
+								cout<<"L1D dirty block not in L2C"<<endl;
+							cout<<"L1D address not in L2C:"<<hex<<ooo_cpu[i].L1D.block[l1dset][l1dway].address<<dec<<endl;
+						}
+				// #endif
+
+						assert(match==1);
+						match = -1;
+		//L1D data should be present in LLC
+						int llcset = uncore.LLC.get_set(ooo_cpu[i].L1D.block[l1dset][l1dway].address);
+							for(int llcway=0;llcway< LLC_WAY;llcway++)
+								if(ooo_cpu[i].L1D.block[l1dset][l1dway].tag == uncore.LLC.block[llcset][llcway].tag &&
+										uncore.LLC.block[llcset][llcway].valid == 1){
+									match = 1 ;
+								}
+
+				// #ifdef INCLUSIVE_PRINT
+						if(match == -1)
+						{
+							counter1++;
+							if(ooo_cpu[i].L1D.block[l1dset][l1dway].dirty)
+                                                                cout<<"L1D dirty block not in LLC"<<endl;
+							cout<<"L1D address not in LLC:"<<hex<<ooo_cpu[i].L1D.block[l1dset][l1dway].address<<dec<<endl;
+						}
+				// #endif
+						assert(match==1);
+					}
+
+			if(counter)
+				cout<<"l1D data not in l2c: "<<counter<<endl;
+			if(counter1)
+				cout<<"l1D data not in llc: "<<counter1<<endl;
+
+			counter=0;
+			counter1=0;
+
+			//L2C data should be present in LLC
+			for(int l2cset=0;l2cset<L2C_SET;l2cset++)
+				for(int l2cway=0;l2cway<L2C_WAY;l2cway++)
+					if(ooo_cpu[i].L2C.block[l2cset][l2cway].valid == 1){
+						int match = -1;
+						int llcset = uncore.LLC.get_set(ooo_cpu[i].L2C.block[l2cset][l2cway].address);
+							for(int llcway=0;llcway< LLC_WAY;llcway++)
+								if(ooo_cpu[i].L2C.block[l2cset][l2cway].tag == uncore.LLC.block[llcset][llcway].tag &&
+										uncore.LLC.block[llcset][llcway].valid == 1){
+									match = 1 ;
+								}
+				// #ifdef INCLUSIVE_PRINT
+						if(match == -1)
+						{
+							counter++;
+							if(ooo_cpu[i].L2C.block[l2cset][l2cway].dirty)
+								counter1++;
+							cout<<"L2C address not in LLC:"<<hex<<ooo_cpu[i].L2C.block[l2cset][l2cway].address<<dec<<endl;
+						}
+				// #endif
+						assert(match==1);
+					}
+
+
+			if(counter)
+				cout<<"l2C data not in llc: "<<counter<<endl;
+			if(counter && counter1)
+				cout<<"l2c dirty block not in llc:"<<counter1<<endl;
+
+	}
+
+}
+
