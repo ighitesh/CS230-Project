@@ -1,0 +1,78 @@
+
+*** ChampSim Multicore Out-of-Order Simulator ***
+
+Warmup Instructions: 1000000
+Simulation Instructions: 10000000
+Number of CPUs: 1
+LLC sets: 2048
+LLC ways: 16
+Off-chip DRAM Size: 4096 MB Channels: 1 Width: 64-bit Data Rate: 3200 MT/s
+
+CPU 0 runs /Users/claire/Desktop/IIT/Semesters/Sem4/CS230/CS230-Project/ChampSim-master/dpc3_traces/bfs-3.trace.gz
+CPU 0 L1I next line prefetcher
+CPU 0 L2C next line prefetcher
+
+Warmup complete CPU 0 instructions: 1000001 cycles: 298569 (Simulation time: 0 hr 0 min 0 sec) 
+
+Heartbeat CPU 0 instructions: 10000000 cycles: 18431627 heartbeat IPC: 0.542546 cumulative IPC: 0.496331 (Simulation time: 0 hr 0 min 6 sec) 
+Finished CPU 0 instructions: 10000001 cycles: 20579449 cumulative IPC: 0.485922 (Simulation time: 0 hr 0 min 7 sec) 
+
+ChampSim completed all CPUs
+
+Region of Interest Statistics
+
+CPU 0 cumulative IPC: 0.485922 instructions: 10000001 cycles: 20579449
+L1D TOTAL     ACCESS:    1472012  HIT:    1259049  MISS:     212963
+L1D LOAD      ACCESS:     934840  HIT:     787744  MISS:     147096
+L1D RFO       ACCESS:     537172  HIT:     471305  MISS:      65867
+L1D PREFETCH  ACCESS:          0  HIT:          0  MISS:          0
+L1D WRITEBACK ACCESS:          0  HIT:          0  MISS:          0
+L1D PREFETCH  REQUESTED:          0  ISSUED:          0  USEFUL:          0  USELESS:          0
+L1D AVERAGE MISS LATENCY: 101.611 cycles
+L1I TOTAL     ACCESS:    2619487  HIT:    2619210  MISS:        277
+L1I LOAD      ACCESS:    2619336  HIT:    2619150  MISS:        186
+L1I RFO       ACCESS:          0  HIT:          0  MISS:          0
+L1I PREFETCH  ACCESS:        151  HIT:         60  MISS:         91
+L1I WRITEBACK ACCESS:          0  HIT:          0  MISS:          0
+L1I PREFETCH  REQUESTED:        224  ISSUED:        224  USEFUL:         21  USELESS:         65
+L1I AVERAGE MISS LATENCY: 117.321 cycles
+L2C TOTAL     ACCESS:     353114  HIT:     149632  MISS:     203482
+L2C LOAD      ACCESS:     147265  HIT:      61599  MISS:      85666
+L2C RFO       ACCESS:      65867  HIT:        199  MISS:      65668
+L2C PREFETCH  ACCESS:      67320  HIT:      15173  MISS:      52147
+L2C WRITEBACK ACCESS:      72662  HIT:      72661  MISS:          1
+L2C PREFETCH  REQUESTED:     147362  ISSUED:     145096  USEFUL:      46477  USELESS:       4492
+L2C AVERAGE MISS LATENCY: 134.539 cycles
+LLC TOTAL     ACCESS:     275428  HIT:      76539  MISS:     198889
+LLC LOAD      ACCESS:       8694  HIT:       1204  MISS:       7490
+LLC RFO       ACCESS:      65668  HIT:       1871  MISS:      63797
+LLC PREFETCH  ACCESS:     129119  HIT:       1518  MISS:     127601
+LLC WRITEBACK ACCESS:      71947  HIT:      71946  MISS:          1
+LLC PREFETCH  REQUESTED:          0  ISSUED:          0  USEFUL:         12  USELESS:     122005
+LLC AVERAGE MISS LATENCY: 150.331 cycles
+Major fault: 0 Minor fault: 3553
+CPU 0 L1I next line prefetcher final stats
+CPU 0 L2C next line prefetcher final stats
+
+DRAM Statistics
+ CHANNEL 0
+ RQ ROW_BUFFER_HIT:      67736  ROW_BUFFER_MISS:     131146
+ DBUS_CONGESTED:      62233
+ WQ ROW_BUFFER_HIT:      50206  ROW_BUFFER_MISS:      11268  FULL:          0
+
+ AVG_CONGESTED_CYCLE: 5
+
+CPU 0 Branch Prediction Accuracy: 79.7485% MPKI: 40.7936 Average ROB Occupancy at Mispredict: 5.45564
+
+Branch types
+NOT_BRANCH: 7985658 79.8566%
+BRANCH_DIRECT_JUMP: 75 0.00075%
+BRANCH_INDIRECT: 0 0%
+BRANCH_CONDITIONAL: 2014216 20.1422%
+BRANCH_DIRECT_CALL: 30 0.0003%
+BRANCH_INDIRECT_CALL: 0 0%
+BRANCH_RETURN: 30 0.0003%
+BRANCH_OTHER: 0 0%
+
+gzip: error writing to output: Broken pipe
+gzip: /Users/claire/Desktop/IIT/Semesters/Sem4/CS230/CS230-Project/ChampSim-master/dpc3_traces/bfs-3.trace.gz: uncompress failed
