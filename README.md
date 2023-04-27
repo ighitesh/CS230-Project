@@ -30,7 +30,7 @@ Here is a breakdown of this part of the code:
 In short, this code implements an inclusive cache policy by checking for outstanding requests and pending writebacks, and invalidating any copies of the memory block in lower-level caches when a block is modified in a higher-level cache.
 
 ### Changes in the handle_fill function in the src/cache.cc function
-The code I implemented in the handle_fill do the following:
+The code implemented in the handle_fill does the following:
 
 1. When a block is evicted from the Last Level Cache (LLC) or L2 Cache (L2C) based on the value of `cache_type`, the code checks if it is a valid block. If it is a valid block, the code then checks each CPU for inclusivity using the `make_inclusive` function.
 2. If the block is inclusive in all CPUs, then `do_fill` is set to 1, indicating that the block can be filled in the cache hierarchy. If the block is not inclusive in any of the CPUs, `do_fill` is set to 0, and the `STALL` counter for the respective type of MSHR entry is incremented.
